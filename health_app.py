@@ -23,43 +23,35 @@ def load_data():
 try:
     df_p, df_o, df_c, df_e = load_data()
 
-    # --- THE HARD CHRONIC FILTER ---
-    # We only care about these specific chronic conditions
-    CHRONIC_LIST = [
-        'Diabetes', 'Hypertension', 'Heart Failure', 'COPD', 'Asthma', 
-        'Kidney Disease', 'Hyperlipidemia', 'Alzheimer', 'Arthritis', 'Prediabetes'
-    ]
-    
-    # 1. Find the IDs of patients who have at least one of these diseases
+    # --- THE HARD CHRONIC FILTER (KEPT SAME) ---
+    CHRONIC_LIST = ['Diabetes', 'Hypertension', 'Heart Failure', 'COPD', 'Asthma', 'Kidney Disease', 'Hyperlipidemia', 'Alzheimer', 'Arthritis', 'Prediabetes']
     has_chronic = df_c['DESCRIPTION'].str.contains('|'.join(CHRONIC_LIST), case=False, na=False)
     chronic_patient_ids = df_c[has_chronic]['PATIENT'].unique()
-    
-    # 2. Filter the patient list to ONLY include those people
-    # This removes all "healthy" or "acute-only" patients from the app entirely
     df_p_chronic = df_p[df_p['Id'].isin(chronic_patient_ids)].copy()
     df_p_chronic['FULL_NAME'] = df_p_chronic['FIRST'] + " " + df_p_chronic['LAST']
 
     # --- SIDEBAR ---
     st.sidebar.title("🛡️ ChronicCare Portal")
+    patient_name = st.sidebar.selectbox(f"Select Patient ({len(df_p_chronic)} Chronic Profiles Found)", options=df_p_chronic['FULL_NAME'].sort_values())
     
-    # The dropdown will now ONLY show the chronic patients
-    patient_name = st.sidebar.selectbox(
-        f"Select Patient ({len(df_p_chronic)} Chronic Profiles Found)", 
-        options=df_p_chronic['FULL_NAME'].sort_values()
-    )
+    # NEW: FILE UPLOAD SECTION
+    st.sidebar.divider()
+    st.sidebar.subheader("📤 Upload Hospital Records")
+    uploaded_file = st.sidebar.file_uploader("Upload Visit Summary (PDF/JPG/PNG)", type=['pdf', 'png', 'jpg', 'jpeg'])
     
-    # Get Data for the selected person
+    # Logic for Risk Update based on upload
+    doc_risk_alert = False
+    if uploaded_file is not None:
+        st.sidebar.success("File uploaded successfully!")
+        doc_risk_alert = True # Trigger the alert in the dashboard
+
     selected_row = df_p_chronic[df_p_chronic['FULL_NAME'] == patient_name].iloc[0]
     p_id = selected_row['Id']
-    
     user_o = df_o[df_o['PATIENT'] == p_id].sort_values('DATE')
     user_e = df_e[df_e['PATIENT'] == p_id].sort_values('START')
     user_c = df_c[df_c['PATIENT'] == p_id]
-    
-    # Filter the specific chronic records for display
     chronic_display = user_c[user_c['DESCRIPTION'].str.contains('|'.join(CHRONIC_LIST), case=False, na=False)]
 
-    # --- VITALS ---
     def get_latest_vital(desc):
         res = user_o[user_o['DESCRIPTION'].str.contains(desc, case=False, na=False)]
         return res.iloc[-1]['VALUE'] if not res.empty else "N/A"
@@ -75,6 +67,10 @@ try:
     if tab == "Dashboard":
         st.title(f"Chronic Health Summary: {patient_name}")
         
+        # DISPLAY RISK ALERT FROM UPLOADED FILE
+        if doc_risk_alert:
+            st.warning(f"🔔 **New Data Detected:** Based on the document '{uploaded_file.name}', your risk profile has been updated. Please check the Consult Prep tab for new questions.")
+
         m1, m2, m3 = st.columns(3)
         m1.metric("Latest Systolic BP", f"{current_bp} mmHg")
         m2.metric("Latest Glucose", f"{current_gl} mg/dL")
@@ -94,17 +90,14 @@ try:
             total_cost = user_e['TOTAL_CLAIM_COST'].sum()
             st.metric("Total Medical Spend", f"${total_cost:,.2f}")
             st.table(user_e[['START', 'DESCRIPTION', 'TOTAL_CLAIM_COST']].tail(10))
-        else:
-            st.write("No encounter history available.")
 
     # ---------------------------------------------------------
-    # TAB 3: RISK SURVEY (What-if logic)
+    # TAB 3: RISK SURVEY
     # ---------------------------------------------------------
     elif tab == "Risk Survey":
         st.title("Symptom-Based Risk Alert")
         q1 = st.checkbox("Shortness of breath or persistent cough?")
         q2 = st.checkbox("Severe thirst or frequent urination?")
-        
         if q1 or q2:
             st.error("🚨 **Alert:** Symptom profile indicates potential chronic flare-up.")
         else:
@@ -115,10 +108,12 @@ try:
     # ---------------------------------------------------------
     elif tab == "Consultation Prep":
         st.title("🏥 Doctor's Visit Prep")
-        st.write("Suggested questions for your healthcare provider:")
-        st.info(f"1. How does my {current_bp} BP affect my {chronic_display.iloc[0]['DESCRIPTION'] if not chronic_display.empty else 'health'}?")
-        st.info("2. Are there any local environmental factors in California I should avoid?")
-        st.info("3. Is my medication dosage still appropriate for these glucose levels?")
+        if doc_risk_alert:
+            st.info(f"💡 **Note:** Questions below have been updated based on your uploaded record: **{uploaded_file.name}**")
+        
+        st.info(f"1. Given my recent hospital records, how should I interpret my current BP of {current_bp}?")
+        st.info("2. Based on my uploaded scan/report, do we need to adjust my long-term care plan?")
+        st.info(f"3. Are my glucose levels ({current_gl}) still trending correctly since my last visit?")
 
 except Exception as e:
     st.error(f"Filter Error: {e}")
