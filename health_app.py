@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # 1. PAGE SETUP
-st.set_page_config(page_title="ChronicCare California", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="MyHealth Personal Dashboard", page_icon="👤", layout="wide")
 
 # UI Styling
 st.markdown("""
@@ -30,23 +30,24 @@ try:
     df_p_chronic = df_p[df_p['Id'].isin(chronic_patient_ids)].copy()
     df_p_chronic['FULL_NAME'] = df_p_chronic['FIRST'] + " " + df_p_chronic['LAST']
 
-    # --- SIDEBAR ---
-    st.sidebar.title("🛡️ ChronicCare Portal")
-    patient_name = st.sidebar.selectbox(f"Select Patient ({len(df_p_chronic)} Chronic Profiles Found)", options=df_p_chronic['FULL_NAME'].sort_values())
+    # --- SIDEBAR (Updated to "MyHealth") ---
+    st.sidebar.title("👤 MyHealth Dashboard")
+    patient_name = st.sidebar.selectbox("Welcome Back! Select Your Profile", options=df_p_chronic['FULL_NAME'].sort_values())
     
-    # NEW: FILE UPLOAD SECTION
+    # FILE UPLOAD SECTION (KEPT SAME)
     st.sidebar.divider()
-    st.sidebar.subheader("📤 Upload Hospital Records")
-    uploaded_file = st.sidebar.file_uploader("Upload Visit Summary (PDF/JPG/PNG)", type=['pdf', 'png', 'jpg', 'jpeg'])
+    st.sidebar.subheader("📤 My Medical Records")
+    uploaded_file = st.sidebar.file_uploader("Add Hospital Visit Summary", type=['pdf', 'png', 'jpg', 'jpeg'])
     
-    # Logic for Risk Update based on upload
     doc_risk_alert = False
     if uploaded_file is not None:
-        st.sidebar.success("File uploaded successfully!")
-        doc_risk_alert = True # Trigger the alert in the dashboard
+        st.sidebar.success("Document added to your history!")
+        doc_risk_alert = True 
 
     selected_row = df_p_chronic[df_p_chronic['FULL_NAME'] == patient_name].iloc[0]
     p_id = selected_row['Id']
+    first_name = selected_row['FIRST']
+    
     user_o = df_o[df_o['PATIENT'] == p_id].sort_values('DATE')
     user_e = df_e[df_e['PATIENT'] == p_id].sort_values('START')
     user_c = df_c[df_c['PATIENT'] == p_id]
@@ -59,61 +60,60 @@ try:
     current_bp = get_latest_vital("Systolic")
     current_gl = get_latest_vital("Glucose")
 
-    tab = st.sidebar.radio("Navigation", ["Dashboard", "Encounter History", "Risk Survey", "Consultation Prep"])
+    tab = st.sidebar.radio("My Navigation", ["Home", "My History", "Health Check", "Doctor Prep"])
 
     # ---------------------------------------------------------
-    # TAB 1: DASHBOARD
+    # TAB 1: HOME (PERSONALIZED)
     # ---------------------------------------------------------
-    if tab == "Dashboard":
-        st.title(f"Chronic Health Summary: {patient_name}")
+    if tab == "Home":
+        st.title(f"👋 Hello, {first_name}!")
+        st.write("Here is your personal health overview for today.")
         
-        # DISPLAY RISK ALERT FROM UPLOADED FILE
         if doc_risk_alert:
-            st.warning(f"🔔 **New Data Detected:** Based on the document '{uploaded_file.name}', your risk profile has been updated. Please check the Consult Prep tab for new questions.")
+            st.warning(f"🔔 **Personal Update:** We noticed new information in your uploaded file: '{uploaded_file.name}'.")
 
         m1, m2, m3 = st.columns(3)
-        m1.metric("Latest Systolic BP", f"{current_bp} mmHg")
-        m2.metric("Latest Glucose", f"{current_gl} mg/dL")
-        m3.metric("Chronic Diagnoses", len(chronic_display))
+        m1.metric("Current Blood Pressure", f"{current_bp} mmHg")
+        m2.metric("Latest Glucose Level", f"{current_gl} mg/dL")
+        m3.metric("Conditions Tracked", len(chronic_display))
 
         st.divider()
-        st.subheader("📋 Active Chronic Conditions")
+        st.subheader("📋 My Tracked Conditions")
         for _, row in chronic_display.iterrows():
-            st.success(f"**{row['DESCRIPTION']}** (Onset: {row['START']})")
+            st.success(f"**{row['DESCRIPTION']}**")
 
     # ---------------------------------------------------------
-    # TAB 2: ENCOUNTER HISTORY
+    # TAB 2: MY HISTORY
     # ---------------------------------------------------------
-    elif tab == "Encounter History":
-        st.title("🏥 Clinical Visits & Claims")
+    elif tab == "My History":
+        st.title("🏥 My Medical Visits")
         if not user_e.empty:
             total_cost = user_e['TOTAL_CLAIM_COST'].sum()
-            st.metric("Total Medical Spend", f"${total_cost:,.2f}")
+            st.metric("Total Healthcare Value received", f"${total_cost:,.2f}")
             st.table(user_e[['START', 'DESCRIPTION', 'TOTAL_CLAIM_COST']].tail(10))
 
     # ---------------------------------------------------------
-    # TAB 3: RISK SURVEY
+    # TAB 3: HEALTH CHECK
     # ---------------------------------------------------------
-    elif tab == "Risk Survey":
-        st.title("Symptom-Based Risk Alert")
-        q1 = st.checkbox("Shortness of breath or persistent cough?")
-        q2 = st.checkbox("Severe thirst or frequent urination?")
+    elif tab == "Health Check":
+        st.title("🧘 How are you feeling today?")
+        q1 = st.checkbox("Are you having any trouble breathing?")
+        q2 = st.checkbox("Are you feeling more thirsty than usual?")
         if q1 or q2:
-            st.error("🚨 **Alert:** Symptom profile indicates potential chronic flare-up.")
+            st.error("🚨 **Alert:** Please contact your care team. These symptoms may need attention.")
         else:
-            st.success("✅ Symptoms appear stable for current chronic profile.")
+            st.success("✅ Everything looks stable based on your symptoms.")
 
     # ---------------------------------------------------------
-    # TAB 4: CONSULTATION PREP
+    # TAB 4: DOCTOR PREP
     # ---------------------------------------------------------
-    elif tab == "Consultation Prep":
-        st.title("🏥 Doctor's Visit Prep")
+    elif tab == "Doctor Prep":
+        st.title("🏥 My Visit Planner")
+        st.write("Take these questions to your next appointment:")
+        st.info(f"1. Based on my latest Blood Pressure ({current_bp}), should we change anything?")
+        st.info(f"2. My glucose is {current_gl}. Is this a healthy trend for my profile?")
         if doc_risk_alert:
-            st.info(f"💡 **Note:** Questions below have been updated based on your uploaded record: **{uploaded_file.name}**")
-        
-        st.info(f"1. Given my recent hospital records, how should I interpret my current BP of {current_bp}?")
-        st.info("2. Based on my uploaded scan/report, do we need to adjust my long-term care plan?")
-        st.info(f"3. Are my glucose levels ({current_gl}) still trending correctly since my last visit?")
+            st.info(f"3. Let's discuss the findings in my recent report: {uploaded_file.name}")
 
 except Exception as e:
-    st.error(f"Filter Error: {e}")
+    st.error(f"Dashboard Error: {e}")
